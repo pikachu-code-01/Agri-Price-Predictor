@@ -5,8 +5,11 @@ from sklearn.ensemble import RandomForestRegressor
 from datetime import datetime
 
 # Page Configuration
-st.set_page_config(page_title="Agri-100 Predictor", page_icon="🌾", layout="wide")
-st.title("🌾 AI-ML Mega Price Predictor (100+ Crops)")
+st.set_page_config(page_title="Agri Price Predictor", page_icon="🌾", layout="wide")
+
+# CHANGED: Updated Title
+st.title("🌾 Agri Price Predictor")
+st.markdown("---")
 
 # 1. THE 100 CROP LIST
 all_crops = [
@@ -22,27 +25,57 @@ all_crops = [
     "Saffron", "Vanilla", "Cocoa", "Indigo", "Hemp", "Flax", "Poppy", "Chilli", "Capsicum", "Strawberry"
 ]
 
-# 2. INPUTS
+# 2. SIDEBAR INPUTS
+st.sidebar.header("Prediction Settings")
 selected_crop = st.sidebar.selectbox("Choose a Crop", sorted(all_crops))
 target_date = st.sidebar.date_input("Select Prediction Date", datetime.now())
 
-# 3. DATA GENERATOR (Simulates 3 years of market data)
+# 3. DATA ENGINE (Logic updated for per-kg values)
 @st.cache_data
-def generate_data(crop_name):
+def generate_market_data(crop_name):
     np.random.seed(len(crop_name)) 
     dates = pd.date_range(start='2023-01-01', end='2026-12-31', freq='MS')
-    base_price = (len(crop_name) * 150) + 800
-    prices = base_price + np.random.randint(-400, 1500, size=len(dates))
+    
+    # CHANGED: Base price adjusted to look like per-kg (e.g., ₹20 to ₹150 per kg)
+    base = (len(crop_name) * 2) + 20
+    prices = base + np.random.randint(-10, 50, size=len(dates))
+    
     df = pd.DataFrame({'Date': dates, 'Price': prices})
-    df['Year'], df['Month'] = df['Date'].dt.year, df['Date'].dt.month
+    df['Year'] = df['Date'].dt.year
+    df['Month'] = df['Date'].dt.month
     return df
 
-data = generate_data(selected_crop)
+data = generate_market_data(selected_crop)
 
-# 4. PREDICTION
+# 4. PREDICTION LOGIC
 if st.sidebar.button(f"Predict {selected_crop} Price"):
-    model = RandomForestRegressor(n_estimators=100).fit(data[['Year', 'Month']], data['Price'])
-    pred = model.predict([[target_date.year, target_date.month]])
+    X = data[['Year', 'Month']]
+    y = data['Price']
     
-    st.metric(label="Predicted Price (₹/Quintal)", value=f"₹{pred[0]:,.2f}")
+    model = RandomForestRegressor(n_estimators=100, random_state=42)
+    model.fit(X, y)
+    
+    pred_val = model.predict([[target_date.year, target_date.month]])
+    
+    # UI RESULTS
+    col1, col2 = st.columns(2)
+    with col1:
+        # CHANGED: Label updated to Rupees per Kilogram
+        st.metric(label=f"Predicted Market Price (₹/kg)", value=f"₹{pred_val[0]:,.2f}")
+        st.write(f"Showing results for **{selected_crop}** on **{target_date.strftime('%B %Y')}**")
+    
+    with col2:
+        avg_price = data['Price'].mean()
+        if pred_val[0] > avg_price:
+            st.warning("Trend: Price is expected to be above average.")
+        else:
+            st.success("Trend: Price is expected to be stable.")
+
+    st.subheader("Price History & Trend Analysis (₹ per kg)")
     st.line_chart(data.set_index('Date')['Price'])
+    
+else:
+    st.info("Select a crop and date from the sidebar, then click 'Predict'.")
+
+st.markdown("---")
+st.caption("Tech Stack: Python | Streamlit | Scikit-Learn | Pandas")
